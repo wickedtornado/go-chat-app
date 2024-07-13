@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/gorilla/sessions"
 	"github.com/gorilla/websocket"
 )
 
@@ -11,15 +12,17 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
-
+var store = sessions.NewCookieStore([]byte("secret"))
 var clients = make(map[*websocket.Conn]bool) //active connections
 var broadcast = make(chan map[string]string) //channel for broadcast
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "index.html")
+		http.ServeFile(w, r, "login.html")
 	})
 
+	http.HandleFunc("/login", handleLogin)
+	http.HandleFunc("/chat", handleChatPage)
 	http.HandleFunc("/ws", handleConnections)
 	go handleMessages()
 
@@ -29,7 +32,28 @@ func main() {
 		log.Fatal("ListenAndServe: ", err)
 	}
 }
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	username := r.FormValue("username")
+	secretCode := r.FormValue("secretCode")
+	if username != "" && secretCode == "0129384756" {
+		session, _ := store.Get(r, "session")
+		session.Values["username"] = username
+		session.Save(r, w)
+		http.Redirect(w, r, "/chat", http.StatusFound)
+	} else {
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
+}
 
+func handleChatPage(w http.ResponseWriter, r *http.Request) {
+
+	session, _ := store.Get(r, "session")
+	if session.Values["username"] == nil {
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
+	http.ServeFile(w, r, "chat.html")
+
+}
 func handleMessages() {
 	for {
 		msg := <-broadcast
